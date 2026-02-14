@@ -14,10 +14,9 @@ from app.schemas import (
     MessageCreate,
     MessageResponse,
     MessageListResponse,
-    MessageResponse as MessageResponseSchema,
 )
 from app.services.conversation_service import ConversationService
-from app.models.user import User
+from app.api.dependencies import get_current_user, get_current_active_user
 
 router = APIRouter()
 
@@ -27,22 +26,16 @@ def get_conversation_service(db: Session = Depends(get_db)) -> ConversationServi
     return ConversationService(db)
 
 
-# TODO: 添加真实的认证依赖
-def get_current_user() -> User:
-    """获取当前用户（待实现）"""
-    # 这里需要从 JWT Token 中解析用户信息
-    # 暂时返回一个临时用户
-    return User(id=1, email="admin@openspark.online", password_hash="")
-
-
 @router.post("/", response_model=ConversationResponse, status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     conversation_data: ConversationCreate,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     创建新对话
+
+    需要认证
     """
     conversation = service.create_conversation(
         user_id=current_user.id,
@@ -56,10 +49,12 @@ async def get_conversations(
     skip: int = 0,
     limit: int = 100,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     获取当前用户的对话列表
+
+    需要认证
     """
     conversations = service.get_user_conversations(
         user_id=current_user.id,
@@ -73,10 +68,12 @@ async def get_conversations(
 async def get_conversation(
     conversation_id: int,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     获取对话详情（包含消息列表）
+
+    需要认证
     """
     conversation = service.get_conversation(conversation_id, current_user.id)
     if not conversation:
@@ -88,7 +85,15 @@ async def get_conversation(
     messages = service.get_messages(conversation_id, current_user.id)
 
     return ConversationDetailResponse(
-        **conversation.__dict__,
+        id=conversation.id,
+        user_id=conversation.user_id,
+        title=conversation.title,
+        status=conversation.status,
+        conversation_type=conversation.conversation_type,
+        model=conversation.model,
+        system_prompt=conversation.system_prompt,
+        created_at=conversation.created_at,
+        updated_at=conversation.updated_at,
         messages=[MessageResponse(**msg.__dict__) for msg in messages],
     )
 
@@ -98,10 +103,12 @@ async def update_conversation(
     conversation_id: int,
     update_data: ConversationUpdate,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     更新对话
+
+    需要认证
     """
     conversation = service.update_conversation(
         conversation_id=conversation_id,
@@ -120,10 +127,12 @@ async def update_conversation(
 async def delete_conversation(
     conversation_id: int,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     删除对话
+
+    需要认证
     """
     success = service.delete_conversation(conversation_id, current_user.id)
     if not success:
@@ -138,10 +147,12 @@ async def create_message(
     conversation_id: int,
     message_data: MessageCreate,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     添加消息
+
+    需要认证
     """
     # 验证对话是否存在
     conversation = service.get_conversation(conversation_id, current_user.id)
@@ -164,10 +175,12 @@ async def get_messages(
     skip: int = 0,
     limit: int = 100,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     获取对话的消息列表
+
+    需要认证
     """
     messages = service.get_messages(
         conversation_id=conversation_id,
@@ -187,10 +200,12 @@ async def chat(
     conversation_id: int,
     user_message: str,
     service: ConversationService = Depends(get_conversation_service),
-    current_user: User = Depends(get_current_user),
+    current_user: get_current_active_user = Depends(get_current_active_user),
 ):
     """
     发送消息并获取 AI 响应
+
+    需要认证
 
     Request Body:
     {

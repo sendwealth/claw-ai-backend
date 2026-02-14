@@ -22,6 +22,7 @@ from app.utils.security import (
     create_refresh_token,
 )
 from app.core.config import settings
+from app.api.dependencies import get_current_user
 
 
 router = APIRouter()
@@ -116,21 +117,21 @@ async def login(user_data: LoginRequest, db: Session = Depends(get_db)):
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_info(
-    email: str = Depends(lambda: None),  # 这里需要实际的依赖注入
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     获取当前用户信息
 
     Args:
-        email: 当前用户邮箱
+        current_user: 当前认证用户
         db: 数据库会话
 
     Returns:
         UserResponse: 用户信息
     """
-    # TODO: 实现真实的认证依赖
-    user = db.query(User).filter(User.email == email).first()
+    # 刷新用户数据（从数据库重新查询）
+    user = db.query(User).filter(User.id == current_user.id).first()
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
