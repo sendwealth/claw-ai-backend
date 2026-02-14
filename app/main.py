@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
-from app.api import auth, users, conversations, knowledge, consulting
+from app.api import auth, users, conversations, knowledge, consulting, ws
 
 
 @asynccontextmanager
@@ -62,6 +62,7 @@ app.include_router(users.router, prefix="/api/v1/users", tags=["用户"])
 app.include_router(conversations.router, prefix="/api/v1/conversations", tags=["对话"])
 app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["知识库"])
 app.include_router(consulting.router, prefix="/api/v1/consulting", tags=["咨询"])
+app.include_router(ws.router, prefix="/api/v1", tags=["WebSocket"])
 
 
 # 根路径
