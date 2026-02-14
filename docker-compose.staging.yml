@@ -1,0 +1,616 @@
+version: '3.8'
+
+# CLAW.AI 测试环境（Staging）配置
+# 用于集成测试、UAT 和功能验证
+
+services:
+  # ====================
+  # 数据库服务
+  # ====================
+
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:15-alpine
+    container_name: claw_ai_postgres_staging
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-claw_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-claw_ai_staging_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-claw_ai_staging}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+    command:
+      - "postgres"
+      - "-c"
+      - "max_connections=200"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "effective_cache_size=1GB"
+      - "-c"
+      - "maintenance_work_mem=64MB"
+      - "-c"
+      - "checkpoint_completion_target=0.9"
+      - "-c"
+      - "wal_buffers=16MB"
+      - "-c"
+      - "default_statistics_target=100"
+      - "-c"
+      - "random_page_cost=1.1"
+      - "-c"
+      - "effective_io_concurrency=200"
+      - "-c"
+      - "work_mem=1310kB"
+      - "-c"
+      - "min_wal_size=1GB"
+      - "-c"
+      - "max_wal_size=4GB"
+      # 开启慢查询日志
+      - "-c"
+      - "log_min_duration_statement=1000"
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5433:5432"  # 使用 5433 端口避免与生产环境冲突
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-claw_ai} -d ${POSTGRES_DB:-claw_ai_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis 缓存
+  redis:
+    image: redis:7-alpine
+    container_name: claw_ai_redis_staging
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-claw_ai_redis_staging} --maxmemory 512mb --maxmemory-policy allkeys-lru --loglevel debug
+    volumes:
+      - redis_staging_data:/data
+    ports:
+      - "6380:6379"  # 使用 6380 端口避免与生产环境冲突
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-claw_ai_redis_staging}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ====================
+  # Milvus 向量数据库
+  # ====================
+
+  # etcd - Milvus 元数据存储
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.5
+    container_name: claw_ai_etcd_staging
+    restart: unless-stopped
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_staging_data:/etcd
+    command: etcd -advertise-client-urls=http://127.0.0.1:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # MinIO - Milvus 对象存储
+  minio:
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    container_name: claw_ai_minio_staging
+    restart: unless-stopped
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-staging_minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-staging_minioadmin}
+    volumes:
+      - minio_staging_data:/minio_data
+    command: minio server /minio_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    ports:
+      - "9000:9000"  # API 端口
+      - "9001:9001"  # Web UI 端口
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Milvus - 向量数据库
+  milvus-standalone:
+    image: milvusdb/milvus:v2.3.3
+    container_name: claw_ai_milvus_staging
+    restart: unless-stopped
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-staging_minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-staging_minioadmin}
+    volumes:
+      - milvus_staging_data:/var/lib/milvus
+    ports:
+      - "19531:19530"
+      - "9092:9091"
+    depends_on:
+      - etcd
+      - minio
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      timeout: 20s
+      retries: 5
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ====================
+  # 后端 API 服务
+  # ====================
+
+  claw-ai-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claw_ai_backend_staging
+    restart: unless-stopped
+    environment:
+      # 应用配置
+      APP_NAME: "CLAW.AI Staging"
+      APP_VERSION: "1.0.0"
+      DEBUG: "True"  # Staging 环境开启调试
+
+      # 数据库配置
+      DATABASE_URL: postgresql://${POSTGRES_USER:-claw_ai}:${POSTGRES_PASSWORD:-claw_ai_staging_pass}@postgres:5432/${POSTGRES_DB:-claw_ai_staging}
+
+      # Redis 配置
+      REDIS_URL: redis://:${REDIS_PASSWORD:-claw_ai_redis_staging}@redis:6379/0
+
+      # JWT 认证配置
+      SECRET_KEY: ${SECRET_KEY:-staging_secret_key_change_in_production}
+      ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      REFRESH_TOKEN_EXPIRE_DAYS: 7
+
+      # Zhipu AI 配置
+      ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY}
+      ZHIPUAI_MODEL: ${ZHIPUAI_MODEL:-glm-4}
+
+      # Pinecone 向量数据库配置
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT:-us-west1-gcp}
+      PINECONE_INDEX: ${PINECONE_INDEX:-claw-ai-staging}
+
+      # Milvus 向量数据库配置
+      MILVUS_HOST: milvus-standalone
+      MILVUS_PORT: 19530
+      MILVUS_COLLECTION_NAME: knowledge_vectors_staging
+      MILVUS_DIMENSION: 1024
+
+      # CORS 配置（允许更多源用于测试）
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173}
+
+      # 日志配置
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+
+      # 安全配置（Staging 环境放宽限制）
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1,staging.claw.ai}
+
+      # 测试环境标识
+      ENVIRONMENT: "staging"
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./app:/app/app  # 挂载代码用于热重载（仅测试环境）
+    ports:
+      - "8001:8000"  # 使用 8001 端口避免与生产环境冲突
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      milvus-standalone:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - backend_staging
+      - frontend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ====================
+  # Celery 异步任务队列
+  # ====================
+
+  # Celery Worker - 任务执行器
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claw_ai_celery_worker_staging
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app worker --loglevel=debug --concurrency=4
+    environment:
+      # 应用配置
+      APP_NAME: "CLAW.AI Staging"
+      APP_VERSION: "1.0.0"
+      DEBUG: "True"
+
+      # 数据库配置
+      DATABASE_URL: postgresql://${POSTGRES_USER:-claw_ai}:${POSTGRES_PASSWORD:-claw_ai_staging_pass}@postgres:5432/${POSTGRES_DB:-claw_ai_staging}
+
+      # Redis 配置
+      REDIS_URL: redis://:${REDIS_PASSWORD:-claw_ai_redis_staging}@redis:6379/0
+
+      # JWT 认证配置
+      SECRET_KEY: ${SECRET_KEY:-staging_secret_key_change_in_production}
+      ALGORITHM: HS256
+
+      # Zhipu AI 配置
+      ZHIPUAI_API_KEY: ${ZHIPUAI_API_KEY}
+      ZHIPUAI_MODEL: ${ZHIPUAI_MODEL:-glm-4}
+
+      # Pinecone 向量数据库配置
+      PINECONE_API_KEY: ${PINECONE_API_KEY}
+      PINECONE_ENVIRONMENT: ${PINECONE_ENVIRONMENT:-us-west1-gcp}
+      PINECONE_INDEX: ${PINECONE_INDEX:-claw-ai-staging}
+
+      # 日志配置
+      LOG_LEVEL: "DEBUG"
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./app:/app/app  # 挂载代码用于热重载
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Celery Beat - 定时任务调度器
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claw_ai_celery_beat_staging
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app beat --loglevel=debug --scheduler celery_redbeat.RedBeatScheduler
+    environment:
+      # 应用配置
+      APP_NAME: "CLAW.AI Staging"
+      APP_VERSION: "1.0.0"
+      DEBUG: "True"
+
+      # Redis 配置
+      REDIS_URL: redis://:${REDIS_PASSWORD:-claw_ai_redis_staging}@redis:6379/0
+    volumes:
+      - ./logs:/app/logs
+    depends_on:
+      - redis
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Flower - Celery 任务监控面板
+  celery-flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: claw_ai_celery_flower_staging
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app flower --port=5555 --broker=redis://:${REDIS_PASSWORD:-claw_ai_redis_staging}@redis:6379/0
+    environment:
+      # 应用配置
+      APP_NAME: "CLAW.AI Staging"
+      APP_VERSION: "1.0.0"
+
+      # Redis 配置
+      REDIS_URL: redis://:${REDIS_PASSWORD:-claw_ai_redis_staging}@redis:6379/0
+
+      # Flower 配置
+      FLOWER_PORT: 5555
+      FLOWER_BASIC_AUTH: ${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}
+    ports:
+      - "5556:5555"  # 使用 5556 端口避免与生产环境冲突
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - backend_staging
+      - frontend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ====================
+  # Nginx 反向代理（Staging）
+  # ====================
+
+  nginx:
+    image: nginx:alpine
+    container_name: claw_ai_nginx_staging
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.staging.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl.staging:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    ports:
+      - "8080:80"
+      - "8443:443"
+    depends_on:
+      - claw-ai-backend
+    networks:
+      - frontend_staging
+      - public_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ====================
+  # 监控系统
+  # ====================
+
+  # Prometheus - 指标收集
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: claw_ai_prometheus_staging
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'  # Staging 环境保留 15 天
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./prometheus/prometheus.staging.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_staging_data:/prometheus
+    ports:
+      - "9091:9090"
+    depends_on:
+      - claw-ai-backend
+    networks:
+      - backend_staging
+      - monitoring_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Grafana - 可视化仪表板
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: claw_ai_grafana_staging
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_SERVER_ROOT_URL=${GRAFANA_ROOT_URL:-http://staging.claw.ai:3000}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_LOG_LEVEL=debug
+    volumes:
+      - grafana_staging_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - monitoring_staging
+      - frontend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Loki - 日志聚合
+  loki:
+    image: grafana/loki:2.9.4
+    container_name: claw_ai_loki_staging
+    restart: unless-stopped
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - loki_staging_data:/loki
+      - ./loki/loki-config.staging.yml:/etc/loki/local-config.yaml:ro
+    ports:
+      - "3101:3100"
+    networks:
+      - monitoring_staging
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Promtail - 日志采集
+  promtail:
+    image: grafana/promtail:2.9.4
+    container_name: claw_ai_promtail_staging
+    restart: unless-stopped
+    volumes:
+      - ./promtail/promtail-config.staging.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+    networks:
+      - monitoring_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # PostgreSQL Exporter - 数据库指标
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.14.0
+    container_name: claw_ai_postgres_exporter_staging
+    restart: unless-stopped
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-claw_ai}:${POSTGRES_PASSWORD:-claw_ai_staging_pass}@postgres:5432/${POSTGRES_DB:-claw_ai_staging}?sslmode=disable
+    ports:
+      - "9188:9187"
+    depends_on:
+      - postgres
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Redis Exporter - Redis 指标
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: claw_ai_redis_exporter_staging
+    restart: unless-stopped
+    command:
+      - '--redis.addr=redis://:${REDIS_PASSWORD:-claw_ai_redis_staging}@redis:6379'
+    ports:
+      - "9122:9121"
+    depends_on:
+      - redis
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ====================
+  # 测试支持服务
+  # ====================
+
+  # Mailhog - 邮件测试工具
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: claw_ai_mailhog_staging
+    restart: unless-stopped
+    ports:
+      - "1025:1025"  # SMTP 端口
+      - "8025:8025"  # Web UI 端口
+    networks:
+      - backend_staging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+# ====================
+# 数据卷（持久化存储）
+# ====================
+
+volumes:
+  postgres_staging_data:
+    driver: local
+  redis_staging_data:
+    driver: local
+  prometheus_staging_data:
+    driver: local
+  grafana_staging_data:
+    driver: local
+  loki_staging_data:
+    driver: local
+  etcd_staging_data:
+    driver: local
+  minio_staging_data:
+    driver: local
+  milvus_staging_data:
+    driver: local
+
+# ====================
+# 网络配置
+# ====================
+
+networks:
+  backend_staging:
+    driver: bridge
+    internal: false  # Staging 环境允许外部访问（用于测试）
+  frontend_staging:
+    driver: bridge
+  public_staging:
+    driver: bridge
+  monitoring_staging:
+    driver: bridge
