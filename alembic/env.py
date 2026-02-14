@@ -16,6 +16,8 @@ from app.models import (
     Message,
     KnowledgeBase,
     Document,
+    Config,
+    ConfigHistory,
 )
 
 # Alembic Config 对象

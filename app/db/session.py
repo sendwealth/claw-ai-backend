@@ -1,30 +1,12 @@
 """
 数据库会话管理
+
+已迁移至 database.py 以提供更完整的连接池配置和性能监控
+
+该模块保留用于向后兼容，建议使用 database.py 模块
 """
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from app.core.config import settings
+from app.db.database import engine, SessionLocal, get_db
 
-# 创建数据库引擎
-engine = create_engine(
-    settings.DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=3600,
-    echo=settings.DEBUG,
-)
-
-# 创建会话工厂
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-
-def get_db():
-    """
-    获取数据库会话
-    用于 FastAPI 依赖注入
-    """
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+# 重新导出以保持向后兼容
+__all__ = ["engine", "SessionLocal", "get_db"]

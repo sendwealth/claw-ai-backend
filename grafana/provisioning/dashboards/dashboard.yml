@@ -1,0 +1,15 @@
+# Grafana 仪表板自动加载配置
+
+apiVersion: 1
+
+providers:
+  - name: 'CLAW.AI Dashboards'
+    orgId: 1
+    folder: 'CLAW.AI'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: true

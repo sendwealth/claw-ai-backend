@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from app.core.config import settings
+from app.core import metrics
 from app.api import auth, users, conversations, knowledge, consulting, ws, configs
 
 
@@ -17,6 +18,14 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时执行
     print(f"🚀 {settings.APP_NAME} v{settings.APP_VERSION} 启动中...")
+
+    # 初始化应用信息指标
+    metrics.init_app_metrics(
+        app_name=settings.APP_NAME,
+        app_version=settings.APP_VERSION
+    )
+
+    print("📊 Prometheus metrics initialized")
     yield
     # 关闭时执行
     print(f"👋 {settings.APP_NAME} 已关闭")
@@ -41,6 +50,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 添加 Prometheus 监控中间件
+app.add_middleware(metrics.PrometheusMiddleware)
+
 
 # 健康检查
 @app.get("/health")
@@ -54,6 +66,12 @@ async def health_check():
             "version": settings.APP_VERSION,
         }
     )
+
+# Prometheus 指标端点
+@app.get("/metrics")
+async def metrics_endpoint():
+    """Prometheus 指标端点"""
+    return await metrics.metrics_endpoint()
 
 
 # 注册路由
