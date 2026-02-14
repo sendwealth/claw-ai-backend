@@ -10,7 +10,9 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core import metrics
-from app.api import auth, users, conversations, knowledge, consulting, ws, configs
+from app.core.rate_limit_middleware import RateLimitMiddleware
+from app.core.rate_limit import get_rate_limiter
+from app.api import auth, users, conversations, knowledge, consulting, ws, configs, rate_limit, tasks, cache
 
 
 @asynccontextmanager
@@ -26,6 +28,23 @@ async def lifespan(app: FastAPI):
     )
 
     print("📊 Prometheus metrics initialized")
+
+    # 连接缓存服务
+    from app.services.cache_service import cache_service
+    cache_connected = await cache_service.connect()
+    if cache_connected:
+        print("💾 缓存服务已连接")
+    else:
+        print("⚠️  缓存服务连接失败，将使用内存缓存")
+
+    # 执行缓存预热
+    from app.services.cache_warmup import cache_warmup_initializer
+    try:
+        await cache_warmup_initializer.warmup_all()
+        print("🔥 缓存预热完成")
+    except Exception as e:
+        print(f"⚠️  缓存预热失败: {e}")
+
     yield
     # 关闭时执行
     print(f"👋 {settings.APP_NAME} 已关闭")
@@ -52,6 +71,9 @@ app.add_middleware(
 
 # 添加 Prometheus 监控中间件
 app.add_middleware(metrics.PrometheusMiddleware)
+
+# 添加限流中间件
+app.add_middleware(RateLimitMiddleware, limiter=get_rate_limiter())
 
 
 # 健康检查
@@ -82,6 +104,9 @@ app.include_router(knowledge.router, prefix="/api/v1/knowledge", tags=["知识�
 app.include_router(consulting.router, prefix="/api/v1/consulting", tags=["咨询"])
 app.include_router(ws.router, prefix="/api/v1", tags=["WebSocket"])
 app.include_router(configs.router, prefix="/api/v1/configs", tags=["配置管理"])
+app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["任务管理"])
+app.include_router(rate_limit.router, prefix="/api/v1/rate-limit", tags=["限流管理"])
+app.include_router(cache.router, prefix="/api/v1", tags=["缓存管理"])
 
 
 # 根路径

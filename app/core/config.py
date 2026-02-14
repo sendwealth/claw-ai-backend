@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # Redis 配置
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Celery 配置
+    CELERY_BROKER_URL: str = "redis://localhost:6379/0"
+    CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
+    CELERY_TASK_ALWAYS_EAGER: bool = False
+
     # JWT 认证配置
     SECRET_KEY: str = "your-secret-key-here-change-in-production"
     ALGORITHM: str = "HS256"
@@ -36,10 +41,22 @@ class Settings(BaseSettings):
     ZHIPUAI_API_KEY: str = ""
     ZHIPUAI_MODEL: str = "glm-4"
 
+    # Milvus 向量数据库配置
+    MILVUS_HOST: str = "localhost"
+    MILVUS_PORT: int = 19530
+    MILVUS_COLLECTION_NAME: str = "knowledge_vectors"
+    MILVUS_DIMENSION: int = 1024  # Zhipu AI embedding 维度
+
     # Pinecone 向量数据库配置
     PINECONE_API_KEY: str = ""
     PINECONE_ENVIRONMENT: str = "us-west1-gcp"
     PINECONE_INDEX: str = "claw-ai"
+
+    # RAG 配置
+    RAG_TOP_K: int = 5  # 检索最相似的 K 个文档片段
+    RAG_CHUNK_SIZE: int = 500  # 文档分块大小（字符数）
+    RAG_CHUNK_OVERLAP: int = 50  # 分块重叠大小
+    RAG_REDIS_CACHE_TTL: int = 3600  # Redis 缓存时间（秒）
 
     # CORS 配置
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://openspark.online"]
@@ -54,6 +71,10 @@ class Settings(BaseSettings):
 
     # 安全配置
     ALLOWED_HOSTS: List[str] = ["openspark.online", "www.openspark.online"]
+
+    # 限流配置
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_REDIS_URL: str = "redis://localhost:6379/0"
 
     class Config:
         env_file = ".env"

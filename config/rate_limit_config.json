@@ -1,0 +1,98 @@
+{
+  "rate_limiting": {
+    "enabled": true,
+    "redis": {
+      "url": "redis://localhost:6379/0",
+      "pool_size": 10,
+      "max_connections": 50
+    },
+    "limits": {
+      "global": {
+        "limit": 10000,
+        "window": 60,
+        "burst_capacity": 2
+      },
+      "user": {
+        "free": {
+          "limit": 100,
+          "window": 60
+        },
+        "professional": {
+          "limit": 500,
+          "window": 60
+        },
+        "enterprise": {
+          "limit": 2000,
+          "window": 60
+        }
+      },
+      "ip": {
+        "limit": 200,
+        "window": 60,
+        "burst_capacity": 2
+      },
+      "api": {
+        "/api/v1/conversations": {
+          "limit": 60,
+          "window": 60
+        },
+        "/api/v1/messages": {
+          "limit": 120,
+          "window": 60
+        },
+        "/api/v1/knowledge": {
+          "limit": 30,
+          "window": 60
+        }
+      }
+    },
+    "whitelist": {
+      "ips": [
+        "192.168.1.100",
+        "192.168.1.101"
+      ],
+      "users": [
+        "user_admin",
+        "user_vip_001"
+      ]
+    },
+    "blacklist": {
+      "ips": [
+        "192.168.1.200",
+        "192.168.1.201"
+      ],
+      "users": [
+        "user_blocked_001"
+      ]
+    },
+    "monitoring": {
+      "enabled": true,
+      "alert_threshold": 0.9,
+      "alert_channels": ["log", "webhook"],
+      "webhook_url": "https://your-webhook-url.com/alert"
+    },
+    "fallback": {
+      "enabled": true,
+      "log_errors": true,
+      "allow_on_error": true
+    },
+    "responses": {
+      "rate_limited": {
+        "status_code": 429,
+        "message": "Too Many Requests",
+        "detail": "请求过于频繁，请稍后再试",
+        "include_headers": [
+          "Retry-After",
+          "X-RateLimit-Remaining",
+          "X-RateLimit-Limit",
+          "X-RateLimit-Reset"
+        ]
+      },
+      "blacklisted": {
+        "status_code": 403,
+        "message": "Forbidden",
+        "detail": "您的 IP 或账户已被封禁"
+      }
+    }
+  }
+}
