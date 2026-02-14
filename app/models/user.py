@@ -3,7 +3,7 @@
 """
 
 from sqlalchemy import String, Boolean, Enum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
 from app.db.base import Base
@@ -31,6 +31,10 @@ class User(Base):
     subscription_tier: Mapped[str] = mapped_column(String(50), default=SubscriptionTier.FREE)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # 关系
+    conversations: Mapped[list["Conversation"]] = relationship("Conversation", back_populates="user")
+    knowledge_bases: Mapped[list["KnowledgeBase"]] = relationship("KnowledgeBase", back_populates="user")
 
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"

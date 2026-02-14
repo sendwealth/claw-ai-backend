@@ -11,10 +11,35 @@ from app.schemas.user import (
     RegisterRequest,
     SubscriptionUpdate,
     SubscriptionResponse,
+    MessageResponse as UserMessageResponse,
+)
+
+from app.schemas.conversation import (
+    ConversationBase,
+    ConversationCreate,
+    ConversationUpdate,
+    ConversationResponse,
+    ConversationDetailResponse,
+    MessageBase,
+    MessageCreate,
     MessageResponse,
+    MessageListResponse,
+)
+
+from app.schemas.knowledge import (
+    KnowledgeBaseBase,
+    KnowledgeBaseCreate,
+    KnowledgeBaseUpdate,
+    KnowledgeBaseResponse,
+    KnowledgeBaseDetailResponse,
+    DocumentBase,
+    DocumentCreate,
+    DocumentResponse,
+    DocumentListResponse,
 )
 
 __all__ = [
+    # User
     "UserBase",
     "UserCreate",
     "UserUpdate",
@@ -25,5 +50,25 @@ __all__ = [
     "RegisterRequest",
     "SubscriptionUpdate",
     "SubscriptionResponse",
+    "UserMessageResponse",
+    # Conversation
+    "ConversationBase",
+    "ConversationCreate",
+    "ConversationUpdate",
+    "ConversationResponse",
+    "ConversationDetailResponse",
+    "MessageBase",
+    "MessageCreate",
     "MessageResponse",
+    "MessageListResponse",
+    # Knowledge
+    "KnowledgeBaseBase",
+    "KnowledgeBaseCreate",
+    "KnowledgeBaseUpdate",
+    "KnowledgeBaseResponse",
+    "KnowledgeBaseDetailResponse",
+    "DocumentBase",
+    "DocumentCreate",
+    "DocumentResponse",
+    "DocumentListResponse",
 ]
