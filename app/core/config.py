@@ -41,7 +41,15 @@ class Settings(BaseSettings):
     ZHIPUAI_API_KEY: str = ""
     ZHIPUAI_MODEL: str = "glm-4"
 
-    # Milvus 向量数据库配置
+    # Qdrant 向量数据库配置
+    QDRANT_HOST: str = "localhost"
+    QDRANT_PORT: int = 6333
+    QDRANT_API_KEY: str = ""  # 可选，如果 Qdrant 启用了认证
+    QDRANT_COLLECTION_NAME: str = "knowledge_vectors"
+    QDRANT_VECTOR_SIZE: int = 1024  # Zhipu AI embedding 维度
+    QDRANT_DISTANCE: str = "Cosine"  # 距离度量：Cosine, Euclid, Dot
+
+    # Milvus 向量数据库配置（保留用于兼容）
     MILVUS_HOST: str = "localhost"
     MILVUS_PORT: int = 19530
     MILVUS_COLLECTION_NAME: str = "knowledge_vectors"
@@ -57,6 +65,7 @@ class Settings(BaseSettings):
     RAG_CHUNK_SIZE: int = 500  # 文档分块大小（字符数）
     RAG_CHUNK_OVERLAP: int = 50  # 分块重叠大小
     RAG_REDIS_CACHE_TTL: int = 3600  # Redis 缓存时间（秒）
+    RAG_ENABLE_CACHE: bool = True  # 是否启用向量缓存
 
     # CORS 配置
     CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://openspark.online"]

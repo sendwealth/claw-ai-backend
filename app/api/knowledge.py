@@ -4,8 +4,9 @@
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
+import asyncio
 
 from app.db.session import get_db
 from app.schemas.knowledge import (
@@ -20,6 +21,9 @@ from app.schemas.knowledge import (
 from app.models import KnowledgeBase, Document, User
 from app.api.auth import get_current_user
 from app.services.rag_service import create_rag_service
+from app.services.document_parser import document_parser_service
+from app.utils.file_upload import file_uploader
+from app.core.logger import logger
 
 
 router = APIRouter()
@@ -317,7 +321,89 @@ async def create_document(
             db.commit()
 
     except Exception as e:
-        print(f"⚠️ 文档索引失败: {e}")
+        logger.error(f"⚠️ 文档索引失败: {e}")
+
+    return document
+
+
+@router.post("/{knowledge_base_id}/documents/upload", response_model=DocumentResponse)
+async def upload_document(
+    knowledge_base_id: int,
+    file: UploadFile = File(...),
+    title: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    上传文档文件（支持 PDF/TXT/Markdown）并自动解析和索引
+
+    Args:
+        knowledge_base_id: 知识库 ID
+        file: 上传的文件
+        title: 文档标题（可选，默认使用文件名）
+        db: 数据库会话
+        current_user: 当前用户
+
+    Returns:
+        DocumentResponse: 创建的文档
+    """
+    # 验证知识库所有权
+    knowledge_base = (
+        db.query(KnowledgeBase)
+        .filter(
+            KnowledgeBase.id == knowledge_base_id,
+            KnowledgeBase.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not knowledge_base:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+
+    # 保存上传的文件
+    upload_result = await file_uploader.save_file(file, knowledge_base_id)
+
+    # 解析文档
+    parse_result = await document_parser_service.parse_file(upload_result["file_path"])
+
+    if not parse_result["success"]:
+        # 删除已上传的文件
+        file_uploader.delete_file(upload_result["file_path"])
+        raise HTTPException(status_code=400, detail=f"文档解析失败: {parse_result.get('error')}")
+
+    # 创建文档记录
+    document = Document(
+        knowledge_base_id=knowledge_base_id,
+        title=title or upload_result["file_name"],
+        content=parse_result["text"],
+        file_url=upload_result["relative_path"],
+        file_type=upload_result["file_extension"].lstrip('.'),
+        file_size=upload_result["file_size"],
+        metadata=parse_result.get("metadata"),
+    )
+
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+
+    # 索引到向量数据库
+    try:
+        rag_service = create_rag_service(db)
+        index_result = await rag_service.index_document(
+            knowledge_base_id=knowledge_base_id,
+            document_id=document.id,
+            text=document.content,
+        )
+
+        if index_result["success"]:
+            document.chunk_count = index_result["chunk_count"]
+            db.commit()
+            logger.info(f"✅ 文档上传并索引成功: {document.title}")
+        else:
+            logger.warning(f"⚠️ 文档索引失败: {index_result.get('error')}")
+
+    except Exception as e:
+        logger.error(f"⚠️ 文档索引失败: {e}")
 
     return document
 
