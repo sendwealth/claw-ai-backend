@@ -13,15 +13,15 @@ class Settings(BaseSettings):
     # 应用配置
     APP_NAME: str = "CLAW.AI"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
+    DEBUG: bool = False  # 安全：生产环境默认关闭调试模式
 
     # 服务器配置
     HOST: str = "0.0.0.0"
     PORT: int = 8000
 
-    # 数据库配置
-    DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/claw_ai"
-    TEST_DATABASE_URL: str = "postgresql://postgres:password@localhost:5432/claw_ai_test"
+    # 数据库配置 - 安全：必须从环境变量获取
+    DATABASE_URL: str = ""
+    TEST_DATABASE_URL: str = ""
 
     # Redis 配置
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -31,10 +31,10 @@ class Settings(BaseSettings):
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
     CELERY_TASK_ALWAYS_EAGER: bool = False
 
-    # JWT 认证配置
-    SECRET_KEY: str = "your-secret-key-here-change-in-production"
+    # JWT 认证配置 - 安全：SECRET_KEY 必须从环境变量获取
+    SECRET_KEY: str = ""  # 必须设置！生产环境必须提供
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30  # 安全：缩短为 30 分钟
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     # Zhipu AI 配置
