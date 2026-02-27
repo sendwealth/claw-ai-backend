@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 日志
+logs/
+*.log
+
+# 上传文件
+uploads/
+
+# 测试
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 数据库
+*.db
+*.sqlite3
+
+# 编译
+dist/
+build/
+*.egg-info/
